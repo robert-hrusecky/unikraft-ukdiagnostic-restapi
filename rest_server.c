@@ -40,21 +40,20 @@
 #include <unistd.h>
 #include <errno.h>
 #include <rest.h>
-#include "json.h"
+#include <uk/diagnostic.h>
+#include <uk/json_ir.h>
+#include "json_parser.h"
 
 #define LISTEN_PORT 8123
-static const char reply[] = "HTTP/1.1 200 OK\r\n" \
+static const char header[] = "HTTP/1.1 200 OK\r\n" \
 			    "Content-type: application/json\r\n" \
 			    "Connection: close\r\n" \
 			    "\r\n" \
-			    "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">" \
-			    "<html>" \
-			    "<head><title>It works!</title></head>" \
-			    "<body><h1>It works!</h1><p>This is only a test.</p></body>" \
-			    "</html>\n";
+			    "";
 
 #define BUFLEN 2048
 static char recvbuf[BUFLEN];
+static char sendbuf[BUFLEN];
 
 int rest_server()
 {
@@ -85,6 +84,10 @@ int rest_server()
 		fprintf(stderr, "Failed to listen on socket: %d\n", errno);
 		goto out;
 	}
+
+    const size_t header_size = snprintf(&sendbuf[0], BUFLEN, "%s", &header[0]);
+    char* buff = &sendbuf[header_size];
+    const size_t buff_len = BUFLEN - header_size;
 
 	printf("Listening on port %d...\n", LISTEN_PORT);
 	while (1) {
@@ -126,17 +129,25 @@ int rest_server()
             free_json_value(json);
             continue;
         }
-
+        
+        struct json_value* outputs = create_json_value(JSON_OBJECT);
         for (struct json_object* obj = json->object; obj != NULL; obj = obj->next) {
             printf("function name: %s\n", obj->key);
             // TODO: use obj->value to pass parameters
+            struct json_value* result = NULL;
+            run_diag_function(obj->key, obj->value, &result);
+            json_object_insert(outputs, obj->key, result);
         }
+        size_t size = to_json(buff, buff_len, outputs);
+        printf("result: %s\n", buff);
+        printf("size: %lu\n", size);
 
         free_json_value(json);
+        free_json_value(outputs);
 
 
 		/* Send reply */
-		n = write(client, reply, sizeof(reply));
+		n = write(client, &sendbuf[0], header_size + size);
 		if (n < 0)
 			fprintf(stderr, "Failed to send a reply\n");
 		else

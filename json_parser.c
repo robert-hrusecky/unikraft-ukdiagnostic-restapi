@@ -1,4 +1,5 @@
-#include "json.h"
+#include "json_parser.h"
+#include <uk/json_ir.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
@@ -11,8 +12,6 @@ struct json_parser_state {
     bool error;
 };
 
-static void free_json_object(struct json_object* object);
-static void free_json_array(struct json_array* array);
 static struct json_value* parse_value(struct json_parser_state* state);
 static char* parse_string(struct json_parser_state* state);
 
@@ -237,16 +236,10 @@ static int64_t parse_int(struct json_parser_state* state) {
     return num;
 }
 
-static struct json_value* create_json_value() {
-    struct json_value* value = malloc(sizeof(struct json_value));
-    value->type = JSON_ERROR;
-    return value;
-}
-
 static struct json_value* parse_value(struct json_parser_state* state) {
     if (!check_end(state))
         return NULL;
-    struct json_value* value = create_json_value();
+    struct json_value* value = create_json_value(JSON_ERROR);
     char next_char = state->data[state->pos];
     // object: '{'
     // array: '['
@@ -292,7 +285,6 @@ static struct json_value* parse_value(struct json_parser_state* state) {
     return value;
 }
 
-
 struct json_value* parse_json(const char* data, const size_t len) {
     struct json_parser_state state = {
         .data = data,
@@ -309,50 +301,3 @@ struct json_value* parse_json(const char* data, const size_t len) {
     return create_json_value(JSON_ERROR);
 }
 
-static void free_json_object(struct json_object* object) {
-    if (object == NULL) return;
-    free(object->key);
-    free_json_value(object->value);
-    free_json_object(object->next);
-    free(object);
-}
-
-static void free_json_array(struct json_array* array) {
-    if (array == NULL) return;
-
-    for (size_t i = 0; i < array->size; i++) {
-        free_json_value(array->values[i]);
-    }
-    free(array->values);
-
-    free(array);
-}
-
-void free_json_value(struct json_value* value) {
-    if (value == NULL) return;
-    switch (value->type) {
-        case JSON_OBJECT:
-            free_json_object(value->object);
-            break;
-        case JSON_ARRAY:
-            free_json_array(value->array);
-            break;
-        case JSON_STRING:
-            free(value->string);
-            break;
-        default:
-            break;
-    }
-    free(value);
-}
-
-struct json_value* json_object_lookup(struct json_value* object_value, const char* key) {
-    if (object_value->type != JSON_OBJECT) {
-        return NULL;
-    }
-    for (struct json_object* curr = object_value->object; curr != NULL; curr = curr->next) {
-        if (strcmp(curr->key, key) == 0)
-            return curr->value;
-    }
-    return NULL;
-}
